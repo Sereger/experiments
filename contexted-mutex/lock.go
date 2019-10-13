@@ -18,12 +18,10 @@ type (
 )
 
 func NewLock() *RWLock {
-	l := &RWLock{
+	return &RWLock{
 		addrLock: new(uint32),
 		addrCnr:  new(uint32),
 	}
-
-	return l
 }
 
 func (l *RWLock) Lock(ctn context.Context) error {
