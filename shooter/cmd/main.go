@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -20,8 +21,9 @@ var (
 	rps = flag.Int("rps", 10, "rps")
 	w   = flag.Int("w", 64, "workers")
 
-	success int64
-	fails   int64
+	success  int64
+	fails    int64
+	duration int64
 )
 
 type (
@@ -41,6 +43,7 @@ func newTestServer() *httptest.Server {
 
 func (fs *fakeSrv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if fs.rnd.Intn(100) < 50 {
+		time.Sleep(10 * time.Millisecond)
 		w.WriteHeader(200)
 	} else {
 		w.WriteHeader(500)
@@ -58,6 +61,7 @@ func main() {
 		go func() {
 			defer wg.Done()
 			for r := range ch {
+				s := time.Now()
 				resp, err := http.DefaultClient.Do(r)
 				if err != nil {
 					atomic.AddInt64(&fails, 1)
@@ -66,6 +70,7 @@ func main() {
 
 				if resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices {
 					atomic.AddInt64(&success, 1)
+					atomic.AddInt64(&duration, int64(time.Since(s)))
 				} else {
 					atomic.AddInt64(&fails, 1)
 				}
@@ -118,7 +123,9 @@ func printStat(ctx context.Context) {
 	for {
 		select {
 		case <-tik.C:
-			fmt.Printf("\rok %d / err %d", atomic.LoadInt64(&success), atomic.LoadInt64(&fails))
+			ok := atomic.LoadInt64(&success)
+			avg := time.Duration(atomic.LoadInt64(&duration) / ok)
+			fmt.Printf("\rok %d / err %d/ avg %s%s", ok, atomic.LoadInt64(&fails), avg, strings.Repeat(" ", 32))
 		case <-ctx.Done():
 			fmt.Println()
 			return
