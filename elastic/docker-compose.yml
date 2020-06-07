@@ -1,0 +1,39 @@
+version: "3"
+
+services:
+  es01:
+    build:
+      context: .
+    container_name: es01
+    environment:
+      - discovery-type=single-node
+      - node.name=es01
+      - cluster.name=es-docker-cluster
+      - discovery.seed_hosts=es02
+      - cluster.initial_master_nodes=es01,es02
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    ports:
+      - 9200:9200
+  es02:
+    build:
+      context: .
+    container_name: es02
+    environment:
+      - discovery-type=single-node
+      - node.name=es02
+      - cluster.name=es-docker-cluster
+      - discovery.seed_hosts=es01
+      - cluster.initial_master_nodes=es01,es02
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    ports:
+      - 9201:9200
