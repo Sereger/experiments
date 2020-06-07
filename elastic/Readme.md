@@ -15,3 +15,11 @@ go run cmd/flat/search/main.go -q шашлык
 ```shell script
 go test -bench . -benchmem -v ./cmd/bench_test.go
 ```
+
+Результат для MacBook Pro (13-inch, 2019, 2,8 GHz Intel Core i7, 16 ГБ 2133 MHz LPDDR3):
+```shell script
+goos: darwin
+goarch: amd64
+BenchmarkIndexes/nested-8                     10         123739892 ns/op         1487539 B/op      15331 allocs/op
+BenchmarkIndexes/flat-8                       91          12602806 ns/op          298909 B/op       3160 allocs/op
+```
