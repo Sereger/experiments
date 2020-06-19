@@ -16,7 +16,7 @@ fmt.Println(runtime.SizeOf(xVal), StructSize(xVal))
 // and StructSize calculate size with allocated memory for data 
 ```
 
-But, it not so fast:
+But, it's not so fast:
 ```shell script
 $ make bench
 pkg: github.com/Sereger/experiments/sizeof
