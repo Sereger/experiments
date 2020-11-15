@@ -2,10 +2,13 @@ package controller
 
 import (
 	"fmt"
+	"log"
+	"strconv"
+	"strings"
+
+	"github.com/Sereger/experiments/yeelight/internal/session"
 	"github.com/Sereger/experiments/yeelight/internal/yeelight"
 	"github.com/kljensen/snowball"
-	"log"
-	"strings"
 )
 
 var names = map[string]string{
@@ -14,35 +17,18 @@ var names = map[string]string{
 
 type Controller struct{}
 
-func (c *Controller) ExecuteCommand(tokens []string) error {
-	devices, err := yeelight.Discover()
-	if err != nil || len(devices) == 0 {
-		return fmt.Errorf("Мне не удалось найти устройства")
+func (c *Controller) ExecuteCommand(tokens []string, sess *session.Session) (error, bool) {
+	devices, err := c.resolveDevices(sess)
+	if err != nil {
+		return err, false
 	}
-
-	deviceTokens := make(map[string][]*yeelight.Yeelight)
-	for _, y := range devices {
-		delim := strings.IndexByte(y.Addr, ':')
-		name, ok := names[y.Addr[:delim]]
-		if !ok {
-			continue
-		}
-
-		nameTokens, err := parseName(name)
-		if err != nil {
-			log.Print(err)
-			continue
-		}
-		for _, t := range nameTokens {
-			deviceTokens[t] = append(deviceTokens[t], y)
-		}
-	}
+	deviceTokens := c.devicesTokens(devices, sess)
 	if len(deviceTokens) == 0 {
-		return fmt.Errorf("Мне не удалось найти устройства")
+		return fmt.Errorf("Мне не удалось найти устройства"), false
 	}
 
 	var command, value string
-	var target *yeelight.Yeelight
+	targets := make(map[*yeelight.Yeelight]struct{})
 	for _, w := range tokens {
 		token, err := snowball.Stem(w, "russian", false)
 		if err != nil {
@@ -58,35 +44,59 @@ func (c *Controller) ExecuteCommand(tokens []string) error {
 			command, value = "set_bright", "+"
 		case "темн":
 			command, value = "set_bright", "-"
+		case "яркост":
+			command = "set_bright"
+		case "максимальн":
+			value = "100"
+		case "половин", "наполовин":
+			value = "50"
+		case "минимальн":
+			value = "20"
 		}
 
 		devs, ok := deviceTokens[token]
-		if !ok || len(devs) > 1 {
+		if !ok {
 			continue
 		}
-		target = devs[0]
-	}
 
-	if target == nil {
-		return fmt.Errorf("Мне не удалось найти подходящее устройство")
-	}
-	if command == "" || value == "" {
-		return fmt.Errorf("Мне не удалось распознать команду")
-	}
-
-	switch command {
-	case "set_power":
-		target.SetPower(value == "on")
-	case "set_bright":
-		switch value {
-		case "+":
-			target.SetBright(target.Bright + 20)
-		case "-":
-			target.SetBright(target.Bright - 20)
+		for _, d := range devs {
+			targets[d] = struct{}{}
 		}
 	}
 
-	return nil
+	if len(targets) == 0 && len(sess.LastTargets) == 0 {
+		return fmt.Errorf("Мне не удалось найти подходящее устройство"), false
+	} else if len(targets) == 0 {
+		targets = sess.LastTargets
+	}
+	sess.LastTargets = targets
+
+	if command == "" || value == "" {
+		return fmt.Errorf("Мне не удалось распознать команду"), true
+	}
+
+	var continueSession bool
+	for device := range targets {
+		switch command {
+		case "set_power":
+			device.SetPower(value == "on")
+		case "set_bright":
+			continueSession = true
+			switch value {
+			case "+":
+				device.SetBright(device.Bright + 20)
+			case "-":
+				device.SetBright(device.Bright - 20)
+			default:
+				v, _ := strconv.ParseInt(value, 10, 64)
+				if v > 0 {
+					device.SetBright(v)
+				}
+			}
+		}
+	}
+
+	return nil, continueSession
 }
 
 func parseName(name string) (tokens []string, err error) {
@@ -112,4 +122,45 @@ func parseName(name string) (tokens []string, err error) {
 	}
 
 	return words[:n], nil
+}
+
+func (c *Controller) resolveDevices(sess *session.Session) ([]*yeelight.Yeelight, error) {
+	if len(sess.Devices) > 0 {
+		return sess.Devices, nil
+	}
+
+	devices, err := yeelight.Discover()
+	if err != nil || len(devices) == 0 {
+		return nil, fmt.Errorf("Мне не удалось найти устройства")
+	}
+
+	sess.Devices = devices
+	return devices, nil
+}
+
+func (c *Controller) devicesTokens(devices []*yeelight.Yeelight, sess *session.Session) map[string][]*yeelight.Yeelight {
+	if len(sess.DeviceTokens) > 0 {
+		return sess.DeviceTokens
+	}
+
+	deviceTokens := make(map[string][]*yeelight.Yeelight, len(devices)*2)
+	for _, y := range devices {
+		delim := strings.IndexByte(y.Addr, ':')
+		name, ok := names[y.Addr[:delim]]
+		if !ok {
+			continue
+		}
+
+		nameTokens, err := parseName(name)
+		if err != nil {
+			log.Print(err)
+			continue
+		}
+		for _, t := range nameTokens {
+			deviceTokens[t] = append(deviceTokens[t], y)
+		}
+	}
+	sess.DeviceTokens = deviceTokens
+
+	return sess.DeviceTokens
 }

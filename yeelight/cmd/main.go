@@ -4,18 +4,22 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/Sereger/experiments/yeelight/internal/controller"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
+
+	"github.com/Sereger/experiments/yeelight/internal/controller"
+	"github.com/Sereger/experiments/yeelight/internal/session"
 )
 
 func main() {
 	server := new(http.Server)
 	server.Addr = ":1645"
 	h := &handler{
-		ctl: &controller.Controller{},
+		ctl:         &controller.Controller{},
+		sessStorage: session.NewStorage(),
 	}
 
 	server.Handler = h
@@ -35,7 +39,8 @@ func main() {
 }
 
 type handler struct {
-	ctl *controller.Controller
+	ctl         *controller.Controller
+	sessStorage *session.Storage
 }
 
 type (
@@ -43,6 +48,7 @@ type (
 		Words struct {
 			Tokens []string `json:"tokens"`
 		} `json:"nlu"`
+		Phrase string `json:"original_utterance"`
 	}
 	sess struct {
 		SessionID string `json:"session_id"`
@@ -86,14 +92,29 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fmt.Printf("req: [%+v]", data.Req.Words.Tokens)
-	err = h.ctl.ExecuteCommand(data.Req.Words.Tokens)
-	if err != nil {
-		h.writeAnswer(w, err.Error(), data.Sess, data.Ver)
+	fmt.Printf("path: [%s], req: %+v", r.URL.Path, data)
+	if strings.Contains(strings.ToLower(data.Req.Phrase), "навык") {
+		h.writeAnswer(w, "Что мне сделать?", data.Sess, data.Ver, true)
 		return
 	}
-	h.writeAnswer(w, "Выполнено", data.Sess, data.Ver)
-	fmt.Printf("path: [%s], req: %+v", r.URL.Path, data)
+
+	if strings.Contains(strings.ToLower(data.Req.Phrase), "спасибо") || strings.Contains(data.Req.Phrase, "отмена") {
+		h.writeAnswer(w, "Всегда пожалуйста", data.Sess, data.Ver, false)
+		return
+	}
+	if strings.Contains(data.Req.Phrase, "отмена") {
+		h.writeAnswer(w, "Поняла", data.Sess, data.Ver, false)
+		return
+	}
+
+	fmt.Printf("tokens: [%+v], sess: %+v\n", data.Req.Words.Tokens, h.sessStorage.ResolveSession(data.Sess.SessionID))
+
+	err, continueSession := h.ctl.ExecuteCommand(data.Req.Words.Tokens, h.sessStorage.ResolveSession(data.Sess.SessionID))
+	if err != nil {
+		h.writeAnswer(w, err.Error(), data.Sess, data.Ver, continueSession)
+		return
+	}
+	h.writeAnswer(w, "Выполнено", data.Sess, data.Ver, continueSession)
 }
 
 func (h handler) writeErr(w http.ResponseWriter, s sess, ver string) {
@@ -105,12 +126,12 @@ func (h handler) writeErr(w http.ResponseWriter, s sess, ver string) {
 	json.NewEncoder(w).Encode(resp)
 }
 
-func (h handler) writeAnswer(w http.ResponseWriter, answ string, s sess, ver string) {
+func (h handler) writeAnswer(w http.ResponseWriter, answ string, s sess, ver string, continueSession bool) {
 	resp := dtoOut{
 		Resp: resp{
 			Text: answ,
 			Tts:  answ,
-			End:  true,
+			End:  !continueSession,
 		},
 		Sess: s,
 		Ver:  ver,

@@ -23,7 +23,7 @@ func checkError(err error) {
 }
 
 func main() {
-	stemmed, err := parseName("включи выключи свет в зале комнате ярчее светлее темнее светло сделай")
+	stemmed, err := parseName("максимальная минимальная яркость наполовину")
 	if err == nil {
 		fmt.Println(stemmed) // Prints "accumul"
 	}
