@@ -1,13 +1,14 @@
-package main
+package yeelight
 
 import (
 	"bufio"
 	"encoding/json"
-	"errors"
 	"fmt"
+	"log"
 	"math/rand"
 	"net"
-	"net/http"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -16,7 +17,7 @@ const (
 	discoverMSG = "M-SEARCH * HTTP/1.1\r\nHOST:239.255.255.250:1982\r\nMAN:\"ssdp:discover\"\r\nST:wifi_bulb\r\n"
 
 	// timeout value for TCP and UDP commands
-	timeout = time.Second * 30
+	timeout = time.Second * 2
 
 	//SSDP discover address
 	ssdpAddr = "239.255.255.250:1982"
@@ -54,13 +55,17 @@ type (
 
 	//Yeelight represents device
 	Yeelight struct {
-		addr string
-		rnd  *rand.Rand
+		Addr   string
+		ID     string
+		Power  string
+		Name   string
+		Bright int64
+		rnd    *rand.Rand
 	}
 )
 
 //Discover discovers device in local network via ssdp
-func Discover() (*Yeelight, error) {
+func Discover() ([]*Yeelight, error) {
 	var err error
 
 	ssdp, err := net.ResolveUDPAddr("udp4", ssdpAddr)
@@ -72,29 +77,45 @@ func Discover() (*Yeelight, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer c.Close()
+
 	socket := c.(*net.UDPConn)
 	_, err = socket.WriteToUDP([]byte(discoverMSG), ssdp)
 	if err != nil {
 		return nil, err
 	}
-	//socket.SetReadDeadline(time.Now().Add(timeout))
+	socket.SetReadDeadline(time.Now().Add(timeout))
 
+	result := make([]*Yeelight, 0)
 	rsBuf := make([]byte, 1024)
-	size, _, err := socket.ReadFromUDP(rsBuf)
-	if err != nil {
-		return nil, errors.New("no devices found")
-	}
-	rs := rsBuf[0:size]
-	addr := parseAddr(string(rs))
-	fmt.Printf("Device with ip %s found\n", addr)
-	return New(addr), nil
+	undup := make(map[string]struct{})
+	for {
+		size, _, err := socket.ReadFromUDP(rsBuf)
+		if err != nil {
+			break
+		}
 
+		rs := rsBuf[0:size]
+		y := parseDevice(string(rs))
+		if y == nil {
+			continue
+		}
+
+		log.Printf("Device [%+v] found", y)
+		if _, ok := undup[y.Addr]; ok {
+			continue
+		}
+		undup[y.Addr] = struct{}{}
+		result = append(result, y)
+	}
+
+	return result, nil
 }
 
 //New creates new device instance for address provided
 func New(addr string) *Yeelight {
 	return &Yeelight{
-		addr: addr,
+		Addr: addr,
 		rnd:  rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 
@@ -106,9 +127,9 @@ func (y *Yeelight) Listen() (<-chan *Notification, chan<- struct{}, error) {
 	notifCh := make(chan *Notification)
 	done := make(chan struct{}, 1)
 
-	conn, err := net.DialTimeout("tcp", y.addr, time.Second*3)
+	conn, err := net.DialTimeout("tcp", y.Addr, time.Second*3)
 	if err != nil {
-		return nil, nil, fmt.Errorf("cannot connect to %s. %s", y.addr, err)
+		return nil, nil, fmt.Errorf("cannot connect to %s. %s", y.Addr, err)
 	}
 
 	fmt.Println("Connection established")
@@ -163,6 +184,19 @@ func (y *Yeelight) SetPower(on bool) error {
 	return err
 }
 
+//SetPower is used to switch on or off the smart LED (software managed on/off).
+func (y *Yeelight) SetBright(b int64) error {
+	if b < 0 {
+		b = 0
+	}
+	if b > 100 {
+		b = 100
+	}
+
+	_, err := y.executeCommand("set_bright", b)
+	return err
+}
+
 func (y *Yeelight) randID() int {
 	i := y.rnd.Intn(100)
 	return i
@@ -184,9 +218,9 @@ func (y *Yeelight) executeCommand(name string, params ...interface{}) (*CommandR
 //executeCommand executes command
 func (y *Yeelight) execute(cmd *Command) (*CommandResult, error) {
 
-	conn, err := net.Dial("tcp", y.addr)
+	conn, err := net.Dial("tcp", y.Addr)
 	if nil != err {
-		return nil, fmt.Errorf("cannot open connection to %s. %s", y.addr, err)
+		return nil, fmt.Errorf("cannot open connection to %s. %s", y.Addr, err)
 	}
 	time.Sleep(time.Second)
 	conn.SetReadDeadline(time.Now().Add(timeout))
@@ -211,18 +245,29 @@ func (y *Yeelight) execute(cmd *Command) (*CommandResult, error) {
 	return &rs, nil
 }
 
+var respRegexp = regexp.MustCompile(`([\w_\-\d]+):\s*([^\n\r]*)\r?\n`)
+
 //parseAddr parses address from ssdp response
-func parseAddr(msg string) string {
-	if strings.HasSuffix(msg, crlf) {
-		msg = msg + crlf
+func parseDevice(msg string) *Yeelight {
+	result := &Yeelight{rnd: rand.New(rand.NewSource(time.Now().UnixNano()))}
+	mtches := respRegexp.FindAllStringSubmatch(msg, -1)
+
+	for _, m := range mtches {
+		switch strings.ToLower(m[1]) {
+		case "location":
+			result.Addr = strings.TrimPrefix(m[2], "yeelight://")
+		case "power":
+			result.Power = m[2]
+		case "bright":
+			result.Bright, _ = strconv.ParseInt(m[2], 10, 64)
+		case "name":
+			result.Name = m[2]
+		case "ID":
+			result.ID = m[2]
+		}
 	}
-	resp, err := http.ReadResponse(bufio.NewReader(strings.NewReader(msg)), nil)
-	if err != nil {
-		fmt.Println(err)
-		return ""
-	}
-	defer resp.Body.Close()
-	return strings.TrimPrefix(resp.Header.Get("LOCATION"), "yeelight://")
+
+	return result
 }
 
 //closeConnection closes network connection
