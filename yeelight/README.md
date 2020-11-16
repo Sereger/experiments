@@ -1,0 +1,1 @@
+api doc: https://www.yeelight.com/download/Yeelight_Inter-Operation_Spec.pdf
