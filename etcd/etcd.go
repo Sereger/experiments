@@ -200,7 +200,7 @@ func setValue(v reflect.Value, val string) error {
 		}
 		avalFormats := []string{time.RFC3339, "2006-01-02T15:04:05"}
 		for _, f := range avalFormats {
-			t, err := time.Parse(f, val)
+			t, err := time.ParseInLocation(f, val, time.Local)
 			if err == nil {
 				v.Set(reflect.ValueOf(t))
 				return nil
@@ -223,6 +223,12 @@ func parseCfg(v reflect.Value, prefix string) (map[string]reflect.Value, map[str
 
 	switch v.Kind() {
 	case reflect.Struct:
+		if v.Type().String() == "time.Time" {
+			result[prefix] = v
+			defVals[prefix] = defValue(v)
+			return result, defVals
+		}
+
 		for i := 0; i < v.NumField(); i++ {
 			key, _ := v.Type().Field(i).Tag.Lookup("etcd")
 			key = strings.ToUpper(key)
@@ -317,6 +323,9 @@ func defValue(v reflect.Value) string {
 			return strings.Join(data, ",")
 		}
 	}
-
+	switch v.Type().String() {
+	case "time.Time":
+		return v.Interface().(time.Time).Format(time.RFC3339)
+	}
 	return ""
 }

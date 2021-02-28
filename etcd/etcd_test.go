@@ -24,6 +24,7 @@ func Test(t *testing.T) {
 			PtrValue    *subCfg
 			DurationVal time.Duration
 			NamedVal    string `etcd:"SuperValue"`
+			TimeVal     time.Time
 		}
 		testcase struct {
 			name        string
@@ -128,6 +129,17 @@ func Test(t *testing.T) {
 				IntSliceVal: []int{},
 				StrSliceVal: []string{},
 				NamedVal:    "sdsdsd",
+			},
+		},
+		{
+			name:      "time value",
+			key:       "TIMEVAL",
+			etcdValue: "2021-02-11T16:39:09",
+			expectValue: cfg{
+				PtrValue:    &subCfg{},
+				IntSliceVal: []int{},
+				StrSliceVal: []string{},
+				TimeVal:     time.Date(2021, 02, 11, 16, 39, 9, 0, time.Local),
 			},
 		},
 	}
