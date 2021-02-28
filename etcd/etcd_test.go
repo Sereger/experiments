@@ -23,6 +23,7 @@ func Test(t *testing.T) {
 			StructValue subCfg
 			PtrValue    *subCfg
 			DurationVal time.Duration
+			NamedVal    string `etcd:"SuperValue"`
 		}
 		testcase struct {
 			name        string
@@ -35,7 +36,7 @@ func Test(t *testing.T) {
 	tests := []*testcase{
 		{
 			name:      "string value",
-			key:       "TEST_STRVAL",
+			key:       "STRVAL",
 			etcdValue: "abc",
 			expectValue: cfg{
 				StrVal:      "abc",
@@ -46,7 +47,7 @@ func Test(t *testing.T) {
 		},
 		{
 			name:      "int value",
-			key:       "TEST_INTVAL",
+			key:       "INTVAL",
 			etcdValue: "42",
 			expectValue: cfg{
 				IntVal:      42,
@@ -57,7 +58,7 @@ func Test(t *testing.T) {
 		},
 		{
 			name:      "float value",
-			key:       "TEST_FLOAT64VAL",
+			key:       "FLOAT64VAL",
 			etcdValue: "42.0987",
 			expectValue: cfg{
 				Float64Val:  42.0987,
@@ -68,7 +69,7 @@ func Test(t *testing.T) {
 		},
 		{
 			name:      "slices int value",
-			key:       "TEST_INTSLICEVAL",
+			key:       "INTSLICEVAL",
 			etcdValue: "1, 2,3\t,\n99",
 			expectValue: cfg{
 				IntSliceVal: []int{1, 2, 3, 99},
@@ -78,7 +79,7 @@ func Test(t *testing.T) {
 		},
 		{
 			name:      "slices str value",
-			key:       "TEST_STRSLICEVAL",
+			key:       "STRSLICEVAL",
 			etcdValue: "xxx, yyy, \nabc,\tAAA\t",
 			expectValue: cfg{
 				IntSliceVal: []int{},
@@ -88,7 +89,7 @@ func Test(t *testing.T) {
 		},
 		{
 			name:      "sub struct value",
-			key:       "TEST_STRUCTVALUE_XXX",
+			key:       "STRUCTVALUE_XXX",
 			etcdValue: "zzz",
 			expectValue: cfg{
 				StructValue: subCfg{XXX: "zzz"},
@@ -99,7 +100,7 @@ func Test(t *testing.T) {
 		},
 		{
 			name:      "sub struct ptr value",
-			key:       "TEST_PTRVALUE_XXX",
+			key:       "PTRVALUE_XXX",
 			etcdValue: "zzz",
 			expectValue: cfg{
 				PtrValue:    &subCfg{XXX: "zzz"},
@@ -109,7 +110,7 @@ func Test(t *testing.T) {
 		},
 		{
 			name:      "duration value",
-			key:       "TEST_DURATIONVAL",
+			key:       "DURATIONVAL",
 			etcdValue: "1s",
 			expectValue: cfg{
 				PtrValue:    &subCfg{},
@@ -118,11 +119,22 @@ func Test(t *testing.T) {
 				DurationVal: time.Second,
 			},
 		},
+		{
+			name:      "named value",
+			key:       "SUPERVALUE",
+			etcdValue: "sdsdsd",
+			expectValue: cfg{
+				PtrValue:    &subCfg{},
+				IntSliceVal: []int{},
+				StrSliceVal: []string{},
+				NamedVal:    "sdsdsd",
+			},
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			testConfig := &cfg{}
-			params, _ := parseCfg(reflect.ValueOf(testConfig), "TEST")
+			params, _ := parseCfg(reflect.ValueOf(testConfig), "")
 			err := setValue(params[test.key], test.etcdValue)
 			if test.wantErr != "" {
 				require.Contains(t, err.Error(), test.wantErr)
