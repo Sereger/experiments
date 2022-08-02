@@ -1,0 +1,18 @@
+###
+
+# curl -H "Content-Type: application/json" -X POST -d '{"variables": {"amount": {"value":555,"type":"integer"}, "item": {"value":"item-xyz"} } }' http://localhost:8080/engine-rest/process-definition/key/payment-retrieval/start
+POST http://localhost:8080/engine-rest/process-definition/key/test-order-process/start
+Content-Type: application/json
+
+{
+  "businessKey": "asdsadasd_3",
+  "variables": {
+    "additionalJsonInfoObject": {
+      "type": "Json",
+      "value": "{\"order_id\": \"test_3\",\"source\": \"uber\",\"items\": [{\"id\": \"123\", \"name\": \"apple\", \"qty\": 2, \"price\":  254},{\"id\": \"124\", \"name\": \"beer\", \"qty\": 1, \"price\":  123}],\"total\": 377}"
+    }
+  }
+}
+
+###
+
