@@ -1,0 +1,5 @@
+projectName: github.com/Sereger/experiments.git/pgdrivers
+importOrder: [ std, project, external ]
+exclude:
+  - "vendor/**"
+  - ".git/**"
