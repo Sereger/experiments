@@ -1,6 +1,10 @@
 .PHONY: start-env
 start-env:
-	@docker compose up -d
+	@MAX_PREPARED_STATEMENTS=0 docker compose up -d
+
+.PHONY: start-env-with-ps
+start-env-with-ps:
+	@MAX_PREPARED_STATEMENTS=200 docker compose up -d
 
 .PHONY: stop-env
 stop-env:
@@ -13,3 +17,4 @@ restart-env: stop-env start-env
 imports-fix:
 	$(info $(M) fixing imports...)
 	@go run go.xrstf.de/gimps@latest --config .gimps.yaml .
+
